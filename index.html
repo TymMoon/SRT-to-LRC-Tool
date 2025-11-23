@@ -1,0 +1,671 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT与LRC双向转换器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .transition-custom {
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .radio-pill:checked + label {
+                background-color: theme('colors.primary');
+                color: white;
+            }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gradient-to-br from-light to-blue-50 min-h-screen text-dark">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- 头部 -->
+        <header class="text-center mb-12 mt-6">
+            <h1 class="text-[clamp(2rem,5vw,3.5rem)] font-bold text-primary mb-4 text-shadow">
+                <i class="fa fa-exchange mr-3"></i>SRT与LRC双向转换器
+            </h1>
+            <p class="text-gray-600 text-lg max-w-2xl mx-auto">
+                轻松在SRT字幕文件和LRC歌词格式之间互相转换，适用于各种媒体播放器和字幕工具
+            </p>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="bg-white rounded-xl shadow-lg p-6 md:p-8 mb-10 transform hover:shadow-xl transition-custom">
+            <!-- 转换方向选择 -->
+            <div class="mb-8">
+                <h2 class="text-xl font-semibold mb-4 text-center">选择转换方向</h2>
+                <div class="flex flex-wrap justify-center gap-4">
+                    <div class="flex items-center">
+                        <input type="radio" id="srt-to-lrc" name="conversion-direction" value="srt-to-lrc" class="radio-pill hidden" checked="">
+                        <label for="srt-to-lrc" class="px-6 py-3 border-2 border-primary rounded-full cursor-pointer transition-custom hover:bg-primary/5">
+                            <i class="fa fa-file-text-o mr-2"></i>SRT 转 LRC
+                        </label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="radio" id="lrc-to-srt" name="conversion-direction" value="lrc-to-srt" class="radio-pill hidden">
+                        <label for="lrc-to-srt" class="px-6 py-3 border-2 border-primary rounded-full cursor-pointer transition-custom hover:bg-primary/5">
+                            <i class="fa fa-music mr-2"></i>LRC 转 SRT
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 上传区域 -->
+            <div id="upload-area" class="border-2 border-dashed border-gray-300 rounded-lg p-10 text-center mb-8 cursor-pointer hover:border-primary transition-custom">
+                <i class="fa fa-cloud-upload text-5xl text-gray-400 mb-4 transform hover:scale-110 transition-custom"></i>
+                <h2 class="text-xl font-semibold mb-2">拖放文件到这里，或点击选择文件</h2>
+                <p class="text-gray-500 mb-4">支持的格式：.srt, .lrc</p>
+                <input type="file" id="file-input" accept=".srt,.lrc" class="hidden">
+                <button id="browse-btn" class="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-custom">
+                    <i class="fa fa-folder-open mr-2"></i>浏览文件
+                </button>
+            </div>
+
+            <!-- 文件信息 -->
+            <div id="file-info" class="hidden mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <i id="file-icon" class="fa fa-file-text-o text-primary text-xl mr-3"></i>
+                        <div>
+                            <h3 id="file-name" class="font-medium"></h3>
+                            <p id="file-size" class="text-sm text-gray-500"></p>
+                        </div>
+                    </div>
+                    <button id="remove-file" class="text-gray-400 hover:text-red-500 transition-custom">
+                        <i class="fa fa-times-circle text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 转换设置 (仅LRC转SRT时显示) -->
+            <div id="lrc-settings" class="hidden mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <h3 class="text-lg font-semibold mb-3 flex items-center">
+                    <i class="fa fa-sliders text-primary mr-2"></i>转换设置
+                </h3>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="default-duration" class="block text-sm font-medium text-gray-700 mb-1">默认持续时间 (毫秒)</label>
+                        <input type="number" id="default-duration" value="3000" min="500" max="10000" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">用于没有后续条目的歌词行</p>
+                    </div>
+                    <div>
+                        <label for="time-offset" class="block text-sm font-medium text-gray-700 mb-1">时间偏移 (毫秒)</label>
+                        <input type="number" id="time-offset" value="0" min="-5000" max="5000" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">可为所有时间戳添加偏移量（负值提前，正值延后）</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 转换按钮 -->
+            <div class="text-center mb-8">
+                <button id="convert-btn" class="bg-secondary hover:bg-secondary/90 text-white px-8 py-4 rounded-lg font-medium shadow-md hover:shadow-lg transition-custom disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-secondary" disabled="">
+                    <i class="fa fa-magic mr-2"></i>开始转换
+                </button>
+            </div>
+
+            <!-- 转换状态 -->
+            <div id="conversion-status" class="hidden mb-8 text-center">
+                <div id="loading" class="hidden">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mb-4"></div>
+                    <p class="text-gray-600">正在转换文件...</p>
+                </div>
+                <div id="success" class="hidden">
+                    <div class="inline-block text-secondary mb-4">
+                        <i class="fa fa-check-circle text-4xl"></i>
+                    </div>
+                    <p class="text-gray-600 mb-2">转换成功！</p>
+                    <a id="download-link" href="#" class="inline-block bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-custom mt-2">
+                        <i class="fa fa-download mr-2"></i>下载转换后的文件
+                    </a>
+                </div>
+                <div id="error" class="hidden">
+                    <div class="inline-block text-red-500 mb-4">
+                        <i class="fa fa-exclamation-circle text-4xl"></i>
+                    </div>
+                    <p id="error-message" class="text-gray-600">转换失败，请检查文件格式是否正确。</p>
+                </div>
+            </div>
+
+            <!-- 预览区域 -->
+            <div id="preview-section" class="hidden mt-8">
+                <h3 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fa fa-eye text-primary mr-2"></i>预览
+                </h3>
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 max-h-60 overflow-y-auto text-sm font-mono">
+                    <pre id="preview-content"></pre>
+                </div>
+            </div>
+        </main>
+
+        <!-- 说明部分 -->
+        <section class="bg-white rounded-xl shadow-lg p-6 md:p-8 mb-10">
+            <h2 class="text-2xl font-bold mb-4 text-primary">
+                <i class="fa fa-info-circle mr-2"></i>关于SRT和LRC格式
+            </h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-semibold mb-2">SRT格式</h3>
+                    <p class="text-gray-600 mb-3">SubRip字幕格式，通常用于视频字幕，包含序号、时间戳（开始时间和结束时间）和字幕内容。</p>
+                    <div class="bg-gray-50 p-3 rounded text-sm font-mono overflow-x-auto">
+                        <pre>1
+00:00:01,000 --&gt; 00:00:05,000
+这是SRT格式的字幕示例</pre>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-2">LRC格式</h3>
+                    <p class="text-gray-600 mb-3">歌词格式，主要用于音频文件，只包含开始时间戳和对应的歌词内容。</p>
+                    <div class="bg-gray-50 p-3 rounded text-sm font-mono overflow-x-auto">
+                        <pre>[00:01.00]这是LRC格式的歌词示例</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 页脚 -->
+        <footer class="text-center text-gray-500 text-sm py-4">
+            <p>SRT与LRC双向转换器 | 本地运行，您的文件不会上传到任何服务器</p>
+        </footer>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const browseBtn = document.getElementById('browse-btn');
+        const fileInfo = document.getElementById('file-info');
+        const fileName = document.getElementById('file-name');
+        const fileSize = document.getElementById('file-size');
+        const fileIcon = document.getElementById('file-icon');
+        const removeFile = document.getElementById('remove-file');
+        const convertBtn = document.getElementById('convert-btn');
+        const conversionStatus = document.getElementById('conversion-status');
+        const loading = document.getElementById('loading');
+        const success = document.getElementById('success');
+        const error = document.getElementById('error');
+        const errorMessage = document.getElementById('error-message');
+        const downloadLink = document.getElementById('download-link');
+        const previewSection = document.getElementById('preview-section');
+        const previewContent = document.getElementById('preview-content');
+        const srtToLrcRadio = document.getElementById('srt-to-lrc');
+        const lrcToSrtRadio = document.getElementById('lrc-to-srt');
+        const lrcSettings = document.getElementById('lrc-settings');
+        const defaultDurationInput = document.getElementById('default-duration');
+        const timeOffsetInput = document.getElementById('time-offset');
+
+        let selectedFile = null;
+
+        // 事件监听 - 转换方向选择
+        srtToLrcRadio.addEventListener('change', () => {
+            lrcSettings.classList.add('hidden');
+            if (selectedFile) {
+                validateFileFormat(selectedFile);
+            }
+        });
+
+        lrcToSrtRadio.addEventListener('change', () => {
+            lrcSettings.classList.remove('hidden');
+            if (selectedFile) {
+                validateFileFormat(selectedFile);
+            }
+        });
+
+        // 事件监听 - 浏览文件按钮
+        browseBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止事件冒泡到上传区域
+            fileInput.click();
+        });
+
+        // 事件监听 - 文件选择
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files[0]);
+            }
+        });
+
+        // 事件监听 - 拖放功能
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('border-primary', 'bg-blue-50');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('border-primary', 'bg-blue-50');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('border-primary', 'bg-blue-50');
+            
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelection(e.dataTransfer.files[0]);
+            }
+        });
+
+        uploadArea.addEventListener('click', () => {
+            if (!selectedFile) {
+                fileInput.click();
+            }
+        });
+
+        // 事件监听 - 移除文件
+        removeFile.addEventListener('click', () => {
+            resetFileSelection();
+        });
+
+        // 事件监听 - 转换按钮
+        convertBtn.addEventListener('click', () => {
+            if (selectedFile) {
+                if (srtToLrcRadio.checked) {
+                    convertSrtToLrc(selectedFile);
+                } else {
+                    convertLrcToSrt(selectedFile);
+                }
+            }
+        });
+
+        // 处理文件选择
+        function handleFileSelection(file) {
+            // 检查文件类型是否符合当前选择的转换方向
+            if (!validateFileFormat(file)) {
+                return;
+            }
+
+            selectedFile = file;
+            
+            // 显示文件信息
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            
+            // 更新文件图标
+            if (file.name.endsWith('.srt')) {
+                fileIcon.className = 'fa fa-file-text-o text-primary text-xl mr-3';
+            } else if (file.name.endsWith('.lrc')) {
+                fileIcon.className = 'fa fa-music text-primary text-xl mr-3';
+            }
+            
+            fileInfo.classList.remove('hidden');
+            convertBtn.disabled = false;
+            
+            // 重置之前的状态
+            resetConversionStatus();
+        }
+
+        // 验证文件格式是否符合当前转换方向
+        function validateFileFormat(file) {
+            const isSrt = file.type === 'text/srt' || file.name.endsWith('.srt');
+            const isLrc = file.type === 'text/lrc' || file.name.endsWith('.lrc');
+            
+            if (srtToLrcRadio.checked && !isSrt) {
+                showError('当前选择了SRT转LRC，请选择SRT格式的文件（.srt）');
+                return false;
+            }
+            
+            if (lrcToSrtRadio.checked && !isLrc) {
+                showError('当前选择了LRC转SRT，请选择LRC格式的文件（.lrc）');
+                return false;
+            }
+            
+            return true;
+        }
+
+        // 重置文件选择
+        function resetFileSelection() {
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            convertBtn.disabled = true;
+            resetConversionStatus();
+            previewSection.classList.add('hidden');
+        }
+
+        // 重置转换状态
+        function resetConversionStatus() {
+            conversionStatus.classList.add('hidden');
+            loading.classList.add('hidden');
+            success.classList.add('hidden');
+            error.classList.add('hidden');
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            resetConversionStatus();
+            conversionStatus.classList.remove('hidden');
+            error.classList.remove('hidden');
+            errorMessage.textContent = message;
+        }
+
+        // 转换SRT到LRC
+        function convertSrtToLrc(file) {
+            const reader = new FileReader();
+            
+            reader.onloadstart = () => {
+                resetConversionStatus();
+                conversionStatus.classList.remove('hidden');
+                loading.classList.remove('hidden');
+            };
+            
+            reader.onload = (e) => {
+                try {
+                    const srtContent = e.target.result;
+                    const lrcContent = convertSrtContentToLrc(srtContent);
+                    
+                    // 显示成功状态
+                    loading.classList.add('hidden');
+                    success.classList.remove('hidden');
+                    
+                    // 生成下载链接
+                    const blob = new Blob([lrcContent], { type: 'text/lrc' });
+                    const url = URL.createObjectURL(blob);
+                    const lrcFileName = file.name.replace('.srt', '.lrc');
+                    
+                    downloadLink.href = url;
+                    downloadLink.download = lrcFileName;
+                    
+                    // 显示预览
+                    showPreview(lrcContent);
+                    
+                } catch (err) {
+                    console.error('转换失败:', err);
+                    loading.classList.add('hidden');
+                    showError('转换失败: ' + (err.message || '无法解析SRT文件'));
+                }
+            };
+            
+            reader.onerror = () => {
+                loading.classList.add('hidden');
+                showError('读取文件时发生错误');
+            };
+            
+            reader.readAsText(file, 'utf-8');
+        }
+
+        // 转换LRC到SRT
+        function convertLrcToSrt(file) {
+            const reader = new FileReader();
+            const defaultDuration = parseInt(defaultDurationInput.value, 10);
+            const timeOffset = parseInt(timeOffsetInput.value, 10);
+            
+            reader.onloadstart = () => {
+                resetConversionStatus();
+                conversionStatus.classList.remove('hidden');
+                loading.classList.remove('hidden');
+            };
+            
+            reader.onload = (e) => {
+                try {
+                    const lrcContent = e.target.result;
+                    const srtContent = convertLrcContentToSrt(lrcContent, defaultDuration, timeOffset);
+                    
+                    // 显示成功状态
+                    loading.classList.add('hidden');
+                    success.classList.remove('hidden');
+                    
+                    // 生成下载链接
+                    const blob = new Blob([srtContent], { type: 'text/srt' });
+                    const url = URL.createObjectURL(blob);
+                    const srtFileName = file.name.replace('.lrc', '.srt');
+                    
+                    downloadLink.href = url;
+                    downloadLink.download = srtFileName;
+                    
+                    // 显示预览
+                    showPreview(srtContent);
+                    
+                } catch (err) {
+                    console.error('转换失败:', err);
+                    loading.classList.add('hidden');
+                    showError('转换失败: ' + (err.message || '无法解析LRC文件'));
+                }
+            };
+            
+            reader.onerror = () => {
+                loading.classList.add('hidden');
+                showError('读取文件时发生错误');
+            };
+            
+            reader.readAsText(file, 'utf-8');
+        }
+
+        // 显示预览内容
+        function showPreview(content) {
+            previewSection.classList.remove('hidden');
+            // 限制预览长度，避免过大的文件导致性能问题
+            if (content.length > 1000) {
+                previewContent.textContent = content.substring(0, 1000) + 
+                    '\n\n...(内容过长，仅显示部分预览)';
+            } else {
+                previewContent.textContent = content;
+            }
+        }
+
+        // SRT内容转换为LRC
+        function convertSrtContentToLrc(srtContent) {
+            // 分割SRT内容为条目
+            const srtItems = srtContent.split(/\r?\n\r?\n/).filter(item => item.trim() !== '');
+            const lrcLines = [];
+            
+            // 处理每个SRT条目
+            srtItems.forEach(item => {
+                // 分割条目为行
+                const lines = item.split(/\r?\n/).filter(line => line.trim() !== '');
+                
+                // 寻找时间戳行
+                let timeLineIndex = -1;
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].includes('-->')) {
+                        timeLineIndex = i;
+                        break;
+                    }
+                }
+                
+                if (timeLineIndex === -1) {
+                    // 没有找到时间戳，跳过这个条目
+                    return;
+                }
+                
+                // 提取开始时间
+                const timeLine = lines[timeLineIndex];
+                const startTimeStr = timeLine.split('-->')[0].trim();
+                
+                // 转换时间格式: SRT (00:00:01,000) -> LRC (00:01.00)
+                const lrcTime = convertSrtTimeToLrcTime(startTimeStr);
+                
+                // 提取字幕内容（时间戳后面的所有行）
+                const contentLines = lines.slice(timeLineIndex + 1);
+                const content = contentLines.join('\n').trim();
+                
+                if (content) {
+                    lrcLines.push(`[${lrcTime}]${content}`);
+                }
+            });
+            
+            return lrcLines.join('\n');
+        }
+
+        // LRC内容转换为SRT
+        function convertLrcContentToSrt(lrcContent, defaultDuration, timeOffset) {
+            const lines = lrcContent.split(/\r?\n/).filter(line => line.trim() !== '');
+            const lrcEntries = [];
+            let srtLines = [];
+            
+            // 解析LRC行，提取时间和内容
+            lines.forEach(line => {
+                // 匹配LRC时间格式 [mm:ss.xx] 或 [mm:ss:xx]
+                const timeMatch = line.match(/^\[(\d+:\d+\.\d+|\d+:\d+:\d+)\]/);
+                
+                if (timeMatch) {
+                    const timeStr = timeMatch[1];
+                    const content = line.replace(/^\[(\d+:\d+\.\d+|\d+:\d+:\d+)\]/, '').trim();
+                    
+                    if (content) {
+                        // 转换LRC时间为毫秒，添加偏移量
+                        let timeMs = convertLrcTimeToMs(timeStr) + timeOffset;
+                        // 确保时间不为负
+                        timeMs = Math.max(0, timeMs);
+                        
+                        lrcEntries.push({
+                            time: timeMs,
+                            content: content
+                        });
+                    }
+                }
+                // 忽略LRC头部信息（如[ti:],[ar:]等）和没有时间戳的行
+            });
+            
+            // 如果没有解析到任何条目，抛出错误
+            if (lrcEntries.length === 0) {
+                throw new Error('未找到有效的LRC歌词条目');
+            }
+            
+            // 按时间排序（以防LRC文件中的条目无序）
+            lrcEntries.sort((a, b) => a.time - b.time);
+            
+            // 生成SRT内容
+            lrcEntries.forEach((entry, index) => {
+                // 序号
+                srtLines.push(index + 1);
+                
+                // 计算结束时间
+                let endTimeMs;
+                if (index < lrcEntries.length - 1) {
+                    // 使用下一个条目的开始时间作为当前条目的结束时间
+                    endTimeMs = lrcEntries[index + 1].time;
+                    // 确保结束时间大于开始时间
+                    if (endTimeMs <= entry.time) {
+                        endTimeMs = entry.time + defaultDuration;
+                    }
+                } else {
+                    // 最后一个条目使用默认持续时间
+                    endTimeMs = entry.time + defaultDuration;
+                }
+                
+                // 转换为SRT时间格式
+                const startTimeStr = convertMsToSrtTime(entry.time);
+                const endTimeStr = convertMsToSrtTime(endTimeMs);
+                
+                srtLines.push(`${startTimeStr} --> ${endTimeStr}`);
+                srtLines.push(entry.content);
+                srtLines.push(''); // 条目之间的空行
+            });
+            
+            // 移除最后一个空行
+            if (srtLines[srtLines.length - 1] === '') {
+                srtLines.pop();
+            }
+            
+            return srtLines.join('\n');
+        }
+
+        // 转换SRT时间格式到LRC时间格式
+        function convertSrtTimeToLrcTime(srtTime) {
+            // SRT时间格式: 00:00:01,000 或 00:00:01.000
+            const parts = srtTime.replace(',', '.').split(':');
+            
+            if (parts.length !== 3) {
+                throw new Error(`无效的SRT时间格式: ${srtTime}`);
+            }
+            
+            const hours = parseInt(parts[0], 10);
+            const minutes = parseInt(parts[1], 10);
+            const secondsPart = parts[2].split('.');
+            const seconds = parseInt(secondsPart[0], 10);
+            const milliseconds = secondsPart.length > 1 ? parseInt(secondsPart[1], 10) : 0;
+            
+            // 计算总分钟数（小时*60 + 分钟）
+            const totalMinutes = hours * 60 + minutes;
+            
+            // 秒数保留两位小数
+            const secondsWithMs = seconds + milliseconds / 1000;
+            const secondsFormatted = secondsWithMs.toFixed(2).padStart(5, '0');
+            
+            return `${totalMinutes.toString().padStart(2, '0')}:${secondsFormatted}`;
+        }
+
+        // 转换LRC时间格式到毫秒
+        function convertLrcTimeToMs(lrcTime) {
+            // LRC时间格式: mm:ss.xx 或 mm:ss:xx
+            let parts;
+            let minutes, seconds, milliseconds = 0;
+            
+            if (lrcTime.includes(':')) {
+                parts = lrcTime.split(':');
+                
+                if (parts.length === 2) {
+                    // mm:ss.xx 格式
+                    minutes = parseInt(parts[0], 10);
+                    const secParts = parts[1].split('.');
+                    seconds = parseInt(secParts[0], 10);
+                    milliseconds = secParts.length > 1 ? parseInt(secParts[1].padEnd(3, '0').substring(0, 3), 10) : 0;
+                } else if (parts.length === 3) {
+                    // mm:ss:xx 格式
+                    minutes = parseInt(parts[0], 10);
+                    seconds = parseInt(parts[1], 10);
+                    milliseconds = parseInt(parts[2].padEnd(3, '0').substring(0, 3), 10);
+                } else {
+                    throw new Error(`无效的LRC时间格式: ${lrcTime}`);
+                }
+            } else {
+                throw new Error(`无效的LRC时间格式: ${lrcTime}`);
+            }
+            
+            return minutes * 60 * 1000 + seconds * 1000 + milliseconds;
+        }
+
+        // 转换毫秒到SRT时间格式
+        function convertMsToSrtTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const milliseconds = ms % 1000;
+            
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 添加页面载入动画
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.classList.add('opacity-0');
+            setTimeout(() => {
+                document.body.classList.remove('opacity-0');
+                document.body.classList.add('transition-opacity', 'duration-500', 'opacity-100');
+            }, 100);
+        });
+    </script>
+
+
+</body></html>
